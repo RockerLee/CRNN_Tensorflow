@@ -177,7 +177,9 @@ class CRNN(object):
                 iter_loss = 0
                 dists = []
                 learning_rates = []
+                batch_count = 0
                 for batch_y, batch_dt, batch_x in train_batches:
+                    batch_count += 1
                     # if self.__debug:
                         # print('next batch:')
                         # print('batch_y.shape: ', batch_y.shape)
@@ -193,7 +195,8 @@ class CRNN(object):
                         }
                     )
 
-                    if i % config.REPORT_STEPS == 0:
+                    # print real label and prediction label
+                    if i % config.REPORT_STEPS == 0 and batch_count <= 3:
                         for j in range(2):
                             print('batch_y['+str(j)+']:', batch_y[j])
                             print('ground_truth_to_word:', utils.ground_truth_to_word(decoded[j]))
