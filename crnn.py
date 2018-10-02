@@ -1,4 +1,5 @@
 import tensorflow as tf
+import numpy as np
 import config
 import utils
 import os
@@ -21,17 +22,24 @@ class CRNN(object):
                 self.__inputs,
                 self.__targets,
                 self.__seq_len,
-                self.__logits,
+                self.__rnn_out,
                 self.__decoded,
                 self.__optimizer,
-                self.__acc,
+                self.__dist,
                 self.__cost,
                 self.__max_char_count,
                 self.__global_step,
-                self.__init
+                self.__init,
+                self.__learning_rate
             ) = self.crnn(max_image_width, batch_size)
             self.__init.run()
             
+        #summary writer
+        os.makedirs(config.PATH_TBOARD + '/train', exist_ok=True)
+        os.makedirs(config.PATH_TBOARD + '/test', exist_ok=True)
+        self.__train_writer = tf.summary.FileWriter(config.PATH_TBOARD + '/train')
+        self.__test_writer = tf.summary.FileWriter(config.PATH_TBOARD + '/test')
+        
         with self.__session.as_default():
             self.__saver = tf.train.Saver(tf.global_variables(), max_to_keep=10)
             # Loading last save if needed
@@ -151,29 +159,32 @@ class CRNN(object):
         if self.__debug:
             print('dense_decoded:', dense_decoded)
 
-        # The error rate
-        acc = tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32), targets))
+        dist = tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32), targets))
 
         init = tf.global_variables_initializer()
-
-        return inputs, targets, seq_len, logits, dense_decoded, optimizer, acc, cost, max_char_count, global_step, init
+        
+        return inputs, targets, seq_len, logits, dense_decoded, optimizer, dist, cost, max_char_count, global_step, init, learning_rate
     
     def train(self):
         train_batches = utils.load_train_batches()
+        
         with self.__session.as_default():
             print('Start train')
+            self.__train_writer.add_graph(self.__session.graph)
             for i in range(self.step, config.EPOCHS):
-                iter_loss = 0
                 if self.__debug:
                     print('trining step ' + str(i) + ':----------------------------------------------------')
+                iter_loss = 0
+                dists = []
+                learning_rates = []
                 for batch_y, batch_dt, batch_x in train_batches:
-                    if self.__debug:
-                        print('next batch:----------------------------')
-                        print('batch_y.shape: ', batch_y.shape)
+                    # if self.__debug:
+                        # print('next batch:')
+                        # print('batch_y.shape: ', batch_y.shape)
                         # print(batch_dt)
                         # print(batch_x.shape)
-                    op, decoded, loss_value = self.__session.run(
-                        [self.__optimizer, self.__decoded, self.__cost],
+                    op, decoded, loss_value, dist, learning_rate = self.__session.run(
+                        [self.__optimizer, self.__decoded, self.__cost, self.__dist, self.__learning_rate],
                         feed_dict={
                             self.__inputs: batch_x,
                             self.__seq_len: [self.__max_char_count] * self.__batch_size,
@@ -182,21 +193,29 @@ class CRNN(object):
                         }
                     )
 
-                    if self.__debug:
-                        # if i % config.REPORT_STEPS == 0:
+                    if i % config.REPORT_STEPS == 0:
                         for j in range(2):
                             print('batch_y['+str(j)+']:', batch_y[j])
                             print('ground_truth_to_word:', utils.ground_truth_to_word(decoded[j]))
 
                     iter_loss += loss_value
+                    dists.append(dist)
+                    learning_rates.append(learning_rate)
 
                 self.__saver.save(
                     self.__session,
                     self.__save_path,
                     global_step=self.step
                 )
+                dist = np.mean(dists)
+                rate = np.mean(learning_rates)
+                summary = tf.Summary()
+                summary.value.add(tag="Edit Distance", simple_value=dist)
+                summary.value.add(tag="Learning Rate", simple_value=rate)
+                summary.value.add(tag="Loss", simple_value=iter_loss)
+                self.__train_writer.add_summary(summary=summary, global_step=i)
 
-                print('[{}] Iteration loss: {}----------'.format(self.step, iter_loss))
+                print('[{}] Iteration loss: {}, edit distance: {}----------'.format(self.step, iter_loss, dist))
 
                 self.step += 1
     def test(self):
