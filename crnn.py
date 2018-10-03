@@ -3,7 +3,9 @@ import numpy as np
 import config
 import utils
 import os
+import time
 from tensorflow.contrib import rnn
+from tensorflow.python.client import timeline
 
 class CRNN(object):
     def __init__(self, batch_size, model_path, max_image_width, restore, debug, phase):
@@ -172,19 +174,24 @@ class CRNN(object):
             print('Start train')
             self.__train_writer.add_graph(self.__session.graph)
             for i in range(self.step, config.EPOCHS):
-                if self.__debug:
-                    print('trining step ' + str(i) + ':----------------------------------------------------')
+                # if self.__debug:
+                #     print('trining step ' + str(i) + ':----------------------------------------------------')
                 iter_loss = 0
                 dists = []
                 learning_rates = []
                 batch_count = 0
+                batch_num = len(train_batches)
                 for batch_y, batch_dt, batch_x in train_batches:
                     batch_count += 1
+                    start_time = time.time()
                     # if self.__debug:
                         # print('next batch:')
                         # print('batch_y.shape: ', batch_y.shape)
                         # print(batch_dt)
                         # print(batch_x.shape)
+                        
+                    # options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+                    # run_metadata = tf.RunMetadata()
                     op, decoded, loss_value, dist, learning_rate = self.__session.run(
                         [self.__optimizer, self.__decoded, self.__cost, self.__dist, self.__learning_rate],
                         feed_dict={
@@ -193,8 +200,13 @@ class CRNN(object):
                             self.__targets: batch_dt,
                             self.__global_step: self.step
                         }
+                        # options=options,
+                        # run_metadata=run_metadata
                     )
 
+                    if batch_count%1 == 0:
+                        elapsed = time.time() - start_time
+                        print('training step [' + str(i) + '], batch ' + str(batch_count) + '/' + str(batch_num) + ', elapsed: ' + str(elapsed))
                     # print real label and prediction label
                     if i % config.REPORT_STEPS == 0 and batch_count <= 3:
                         for j in range(2):
@@ -204,12 +216,14 @@ class CRNN(object):
                     iter_loss += loss_value
                     dists.append(dist)
                     learning_rates.append(learning_rate)
+                    
+                    # if self.__debug:
+                    #     #time line trace
+                    #     fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+                    #     chrome_trace = fetched_timeline.generate_chrome_trace_format()
+                    #     with open('trace/timeline_batch_%d.json' % batch_count, 'w') as f:
+                    #         f.write(chrome_trace)
 
-                self.__saver.save(
-                    self.__session,
-                    self.__save_path,
-                    global_step=self.step
-                )
                 dist = np.mean(dists)
                 rate = np.mean(learning_rates)
                 summary = tf.Summary()
@@ -219,7 +233,11 @@ class CRNN(object):
                 self.__train_writer.add_summary(summary=summary, global_step=i)
 
                 print('[{}] Iteration loss: {}, edit distance: {}----------'.format(self.step, iter_loss, dist))
-
                 self.step += 1
+                self.__saver.save(
+                    self.__session,
+                    self.__save_path,
+                    global_step=self.step
+                )
     def test(self):
         print('Start test')
