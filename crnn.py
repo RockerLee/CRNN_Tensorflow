@@ -37,10 +37,10 @@ class CRNN(object):
             self.__init.run()
             
         #summary writer
-        os.makedirs(config.PATH_TBOARD + '/train', exist_ok=True)
-        os.makedirs(config.PATH_TBOARD + '/test', exist_ok=True)
-        self.__train_writer = tf.summary.FileWriter(config.PATH_TBOARD + '/train')
-        self.__test_writer = tf.summary.FileWriter(config.PATH_TBOARD + '/test')
+        os.makedirs(config.PATH_TBOARD_TRAIN, exist_ok=True)
+        os.makedirs(config.PATH_TBOARD_TEST, exist_ok=True)
+        self.__train_writer = tf.summary.FileWriter(config.PATH_TBOARD_TRAIN)
+        self.__test_writer = tf.summary.FileWriter(config.PATH_TBOARD_TEST)
         
         with self.__session.as_default():
             self.__saver = tf.train.Saver(tf.global_variables(), max_to_keep=10)
@@ -83,28 +83,42 @@ class CRNN(object):
             conv1 = tf.layers.conv2d(inputs=inputs, filters = 64, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
             # [batch, 16, 50, 64]
             pool1 = tf.layers.max_pooling2d(inputs=conv1, pool_size=[2, 2], strides=2)
+            # bn
+            bn1 = tf.layers.batch_normalization(pool1)
+            
             # [batch, 16, 50, 128]
-            conv2 = tf.layers.conv2d(inputs=pool1, filters = 128, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
+            conv2 = tf.layers.conv2d(inputs=bn1, filters = 128, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
             # [batch, 8, 25, 128]
             pool2 = tf.layers.max_pooling2d(inputs=conv2, pool_size=[2, 2], strides=2)
+            # bn
+            bn2 = tf.layers.batch_normalization(pool2)
+            
             # [batch, 8, 25, 256]
-            conv3 = tf.layers.conv2d(inputs=pool2, filters = 256, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
+            conv3 = tf.layers.conv2d(inputs=bn2, filters = 256, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
             # batch_normalization
-            bnorm1 = tf.layers.batch_normalization(conv3)
+            bn3 = tf.layers.batch_normalization(conv3)
+            
             # [batch, 8, 25, 256]
-            conv4 = tf.layers.conv2d(inputs=bnorm1, filters = 256, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
+            conv4 = tf.layers.conv2d(inputs=bn3, filters = 256, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
             # [batch, 4, 25, 256]
             pool3 = tf.layers.max_pooling2d(inputs=conv4, pool_size=[2, 1], strides=[2, 1], padding="valid")
+            # batch_normalization
+            bn4 = tf.layers.batch_normalization(pool3)
+            
             # [batch, 4, 25, 512]
-            conv5 = tf.layers.conv2d(inputs=pool3, filters = 512, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
+            conv5 = tf.layers.conv2d(inputs=bn4, filters = 512, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
             # Batch normalization layer
-            bnorm2 = tf.layers.batch_normalization(conv5)
+            bn5 = tf.layers.batch_normalization(conv5)
+            
             # [batch, 4, 25, 512]
-            conv6 = tf.layers.conv2d(inputs=bnorm2, filters = 512, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
+            conv6 = tf.layers.conv2d(inputs=bn5, filters = 512, kernel_size = (3, 3), padding = "same", activation=tf.nn.relu)
             # [batch, 2, 25, 512]
             pool4 = tf.layers.max_pooling2d(inputs=conv6, pool_size=[2, 1], strides=[2, 1], padding="valid")
+            # Batch normalization layer
+            bn6 = tf.layers.batch_normalization(pool4)
+            
             # [batch, 1, 25, 512]
-            conv7 = tf.layers.conv2d(inputs=pool4, filters = 512, kernel_size = (2, 2), strides=[2, 1], padding = "same", activation=tf.nn.relu)
+            conv7 = tf.layers.conv2d(inputs=bn6, filters = 512, kernel_size = (2, 2), strides=[2, 1], padding = "same", activation=tf.nn.relu)
             return conv7
         
         inputs = tf.placeholder(tf.float32, [batch_size, 32, max_width, 1])
@@ -126,9 +140,9 @@ class CRNN(object):
         rnn_output = BidirectionnalRNN(reshaped_cnn_output, seq_len) #[batch, seq_len, 512]
         if self.__debug:
             print('rnn_output:', rnn_output)
-        if self.__phase == 'train':
-            rnn_output = tf.nn.dropout(rnn_output, keep_prob=0.5)
-            print('dropout: phase is train, has dropout')
+        # if self.__phase == 'train':
+        #     rnn_output = tf.nn.dropout(rnn_output, keep_prob=0.5)
+        #     print('dropout: phase is train, has dropout')
 
         logits = tf.reshape(rnn_output, [-1, 512])
 
@@ -204,11 +218,12 @@ class CRNN(object):
                         # run_metadata=run_metadata
                     )
 
-                    if batch_count%1 == 0:
+                    if batch_count%config.REPORT_STEPS == 0:
                         elapsed = time.time() - start_time
-                        print('training step [' + str(i) + '], batch ' + str(batch_count) + '/' + str(batch_num) + ', elapsed: ' + str(elapsed))
+                        print('training step [' + str(i) + '], batch ' + str(batch_count) + '/' + str(batch_num) + ', elapsed: ' + str(elapsed) + ', loss_value: ' + str(loss_value) + ', learning_rate: ' + str(learning_rate))
                     # print real label and prediction label
-                    if i % config.REPORT_STEPS == 0 and batch_count <= 3:
+                    # if i % config.REPORT_STEPS == 0 and batch_count%10 == 0:
+                    if batch_count%config.REPORT_STEPS == 0:
                         for j in range(2):
                             print('batch_y['+str(j)+']:', batch_y[j])
                             print('ground_truth_to_word:', utils.ground_truth_to_word(decoded[j]))

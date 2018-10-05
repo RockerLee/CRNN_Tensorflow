@@ -28,7 +28,7 @@ def preprocess_img():
 
 def build_model():
     crnn = CRNN(
-            batch_size=config.BATCH_SIZE, model_path = 'checkpoint/',
+            batch_size=config.BATCH_SIZE, model_path = config.MODEL_PATH,
             max_image_width = 150, restore = True, debug = True, phase = 'train'
         )
     return crnn

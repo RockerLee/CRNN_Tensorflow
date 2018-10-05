@@ -84,7 +84,7 @@ def load_batches_internal(data):
     print('load_batches_internal, BATCH_SIZE:', config.BATCH_SIZE, 'batch_num:', batch_num)
     for i in range(batch_num):
         # in a batch
-        # if i >= 1:
+        # if i >= 2:
         #     break
         # print('batch:', i, '--------------------------------------')
         start = i * config.BATCH_SIZE

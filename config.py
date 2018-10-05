@@ -23,4 +23,6 @@ STAIRCASE = False
 
 REPORT_STEPS = 10
 
-PATH_TBOARD = 'TensorBoard'
+MODEL_PATH = 'checkpoint/sample_1w'
+PATH_TBOARD_TRAIN = 'TensorBoard/train_1w'
+PATH_TBOARD_TEST = 'TensorBoard/test'
