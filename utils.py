@@ -35,6 +35,7 @@ def denoise_file(filepath, outpath):
 
 def preprocess_imgs(root_dir = '', start_index = 0):
     data = pd.read_csv(root_dir + 'train.csv')
+    os.makedirs('preprocess', exist_ok=True)
     out_dir = root_dir + 'preprocess/'
     print('data loaded, format:')
     print(data.head(n=3))
@@ -83,7 +84,7 @@ def load_batches_internal(data):
     print('load_batches_internal, BATCH_SIZE:', config.BATCH_SIZE, 'batch_num:', batch_num)
     for i in range(batch_num):
         # in a batch
-        # if i > 2:
+        # if i >= 1:
         #     break
         # print('batch:', i, '--------------------------------------')
         start = i * config.BATCH_SIZE
